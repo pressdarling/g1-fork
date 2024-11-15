@@ -1,20 +1,22 @@
 import streamlit as st
-from g1 import generate_response
+from g1_experimental import generate_response
 import json
 
 def main():
     st.set_page_config(page_title="g1 prototype", page_icon="🧠", layout="wide")
     
-    st.title("g1: Using Llama-3.1 70b on Groq to create o1-like reasoning chains")
+    st.title("g1: Powered by Llama on Groq producing o1-like reasoning chains and tool calling")
     
     st.markdown("""
-    This is an early prototype of using prompting to create o1-like reasoning chains to improve output accuracy. It is not perfect and accuracy has yet to be formally evaluated. It is powered by Groq so that the reasoning step is fast!
+    This is an enhanced prototype of using prompting to create o1-like reasoning chains to improve output accuracy. 
+    It now includes tool calling capabilities for calculations and basic code execution. 
+    It is powered by Groq for fast reasoning steps!
                 
     Open source [repository here](https://github.com/bklieger-groq)
     """)
     
     # Text input for user query
-    user_query = st.text_input("Enter your query:", placeholder="e.g., How many 'R's are in the word strawberry?")
+    user_query = st.text_input("Enter your query:", placeholder="e.g., What's the square root of 256 plus the sine of pi/4?")
     
     if user_query:
         st.write("Generating response...")
@@ -26,10 +28,21 @@ def main():
         # Generate and display the response
         for steps, total_thinking_time in generate_response(user_query):
             with response_container.container():
-                for i, (title, content, thinking_time) in enumerate(steps):
+                for step in steps:
+                    # Unpack step information, handling both old and new formats
+                    if len(step) == 3:
+                        title, content, thinking_time = step
+                        tool, tool_input, tool_result = None, None, None
+                    elif len(step) == 6:
+                        title, content, thinking_time, tool, tool_input, tool_result = step
+                    else:
+                        st.error(f"Unexpected step format: {step}")
+                        continue
+
                     # Ensure content is a string
                     if not isinstance(content, str):
                         content = json.dumps(content)
+                    
                     if title.startswith("Final Answer"):
                         st.markdown(f"### {title}")
                         if '```' in content:
@@ -46,10 +59,15 @@ def main():
                                         code = part
                                     st.code(part, language=lang)
                         else:
-                            st.markdown(content.replace('\n', '<br>'), unsafe_allow_html=True)
+                            st.write(content.replace('\n', '<br>'), unsafe_allow_html=True)
                     else:
                         with st.expander(title, expanded=True):
-                            st.markdown(content.replace('\n', '<br>'), unsafe_allow_html=True)
+                            st.write(content.replace('\n', '<br>'), unsafe_allow_html=True)
+                            if tool:
+                                st.markdown(f"**Tool Used:** {tool}")
+                                st.markdown(f"**Tool Input:** `{tool_input}`")
+                                st.markdown(f"**Tool Result:** {str(tool_result)[:200] + '...' if len(str(tool_result)) > 200 else tool_result}")
+                    st.markdown(f"*Thinking time: {thinking_time:.2f} seconds*")
             
             # Only show total time when it's available at the end
             if total_thinking_time is not None:
